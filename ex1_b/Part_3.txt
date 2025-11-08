@@ -1,0 +1,23 @@
+Top 10 Words with Highest Document Frequency:
+the: 242066
+of: 238931
+in: 236963
+a: 236962
+and: 236669
+to: 235719
+for: 219078
+said: 218300
+on: 213234
+that: 204380
+
+Top 10 Words with Lowest Document Frequency:
+reppression: 1
+reinformed: 1
+wemust: 1
+creditorbankers: 1
+hatful: 1
+wolfswinkel: 1
+crookbashing: 1
+mossflecked: 1
+tobefixed: 1
+525feettall: 1
