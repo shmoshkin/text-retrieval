@@ -11,6 +11,7 @@ document IDs (DOCNO) for reference.
 """
 
 import os
+import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from typing import Dict, List, Set
@@ -138,6 +139,9 @@ class InvertedIndex:
         The file may contain multiple <DOC> elements without a root element.
         Each document is processed and added to the inverted index.
         
+        Uses a fallback regex-based extraction method if standard XML parsing fails,
+        allowing extraction of documents from malformed XML files.
+        
         Args:
             file_path: Path to the XML file to parse.
         """
@@ -146,15 +150,35 @@ class InvertedIndex:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
             
-            # Wrap multiple DOC elements in a root element for parsing
+            # Try to wrap multiple DOC elements in a root element for parsing
             # This handles files that have multiple <DOC> elements without a root
             wrapped_content = f'<ROOT>{content}</ROOT>'
             
-            # Parse the wrapped XML
-            root = ET.fromstring(wrapped_content)
-            
-            # Find all DOC elements
-            doc_elements = root.findall('DOC')
+            try:
+                # Parse the wrapped XML
+                root = ET.fromstring(wrapped_content)
+                
+                # Find all DOC elements
+                doc_elements = root.findall('DOC')
+                
+            except ET.ParseError:
+                # If wrapping fails, try to parse individual DOC elements using regex
+                # This handles files with malformed XML
+                doc_elements = []
+                doc_pattern = r'<DOC>(.*?)</DOC>'
+                doc_matches = re.finditer(doc_pattern, content, re.DOTALL)
+                for match in doc_matches:
+                    doc_content = match.group(1)
+                    try:
+                        doc_elem = ET.fromstring(f'<DOC>{doc_content}</DOC>')
+                        doc_elements.append(doc_elem)
+                    except:
+                        # Skip individual documents that can't be parsed
+                        continue
+                
+                if not doc_elements:
+                    # If all else fails, return without processing
+                    return
             
             # Process each document
             for doc_elem in doc_elements:
@@ -162,8 +186,6 @@ class InvertedIndex:
                 if docno and text:
                     self._add_document(docno, text)
                     
-        except ET.ParseError as e:
-            print(f"Warning: Error parsing {file_path}: {e}")
         except Exception as e:
             print(f"Warning: Error processing {file_path}: {e}")
     

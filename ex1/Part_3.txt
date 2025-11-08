@@ -1,28 +1,28 @@
 1. TOP 10 TERMS WITH HIGHEST DOCUMENT FREQUENCY:
 ============================================================
- 1. the                  : 233773 documents (99.71%)
- 2. of                   : 230733 documents (98.41%)
- 3. a                    : 228845 documents (97.61%)
- 4. in                   : 228839 documents (97.60%)
- 5. and                  : 228572 documents (97.49%)
- 6. to                   : 227646 documents (97.10%)
- 7. for                  : 211510 documents (90.21%)
- 8. said                 : 210877 documents (89.94%)
- 9. on                   : 205857 documents (87.80%)
-10. that                 : 197268 documents (84.14%)
+ 1. the                  : 242066 documents (99.70%)
+ 2. of                   : 238931 documents (98.41%)
+ 3. in                   : 236963 documents (97.60%)
+ 4. a                    : 236962 documents (97.60%)
+ 5. and                  : 236669 documents (97.48%)
+ 6. to                   : 235719 documents (97.09%)
+ 7. for                  : 219078 documents (90.23%)
+ 8. said                 : 218300 documents (89.91%)
+ 9. on                   : 213234 documents (87.83%)
+10. that                 : 204380 documents (84.18%)
 
 2. TOP 10 TERMS WITH LOWEST DOCUMENT FREQUENCY:
 ============================================================
  1. memphia              :      1 documents ( 0.00%)
- 2. platinumsellers      :      1 documents ( 0.00%)
- 3. fiverecord           :      1 documents ( 0.00%)
- 4. platinumhaired       :      1 documents ( 0.00%)
- 5. conomination         :      1 documents ( 0.00%)
+ 2. conomination         :      1 documents ( 0.00%)
+ 3. platinumhaired       :      1 documents ( 0.00%)
+ 4. fiverecord           :      1 documents ( 0.00%)
+ 5. platinumsellers      :      1 documents ( 0.00%)
  6. specifially          :      1 documents ( 0.00%)
- 7. biennially           :      1 documents ( 0.00%)
- 8. indescretion         :      1 documents ( 0.00%)
- 9. phofo                :      1 documents ( 0.00%)
-10. whitewigged          :      1 documents ( 0.00%)
+ 7. indescretion         :      1 documents ( 0.00%)
+ 8. phofo                :      1 documents ( 0.00%)
+ 9. whitewigged          :      1 documents ( 0.00%)
+10. metroiii             :      1 documents ( 0.00%)
 
 3. CHARACTERISTICS EXPLANATION:
 ============================================================
@@ -31,7 +31,7 @@ CHARACTERISTICS ANALYSIS:
 
 HIGH DOCUMENT FREQUENCY TERMS:
 ------------------------------------------------------------
-Terms: the, of, a, in, and, to, for, said, on, that
+Terms: the, of, in, a, and, to, for, said, on, that
 
 Characteristics:
 1. These are typically common words (stop words) like 'the', 'a', 'and', etc.
@@ -42,7 +42,7 @@ Characteristics:
 
 LOW DOCUMENT FREQUENCY TERMS:
 ------------------------------------------------------------
-Terms: memphia, platinumsellers, fiverecord, platinumhaired, conomination, specifially, biennially, indescretion, phofo, whitewigged
+Terms: memphia, conomination, platinumhaired, fiverecord, platinumsellers, specifially, indescretion, phofo, whitewigged, metroiii
 
 Characteristics:
 1. These are rare or specialized terms that appear in very few documents.
@@ -65,53 +65,5 @@ KEY DIFFERENCES:
 4. TERMS WITH SIMILAR DOCUMENT FREQUENCIES THAT CO-OCCUR:
 ============================================================
 
-Term 1: 'fitzwater'
-  Document Frequency: 3682 documents
-  Percentage: 1.5704%
-
-Term 2: 'marlin'
-  Document Frequency: 3703 documents
-  Percentage: 1.5794%
-
-Similarity: Document frequencies differ by 21 documents (0.57% relative difference)
-
-Co-occurrence: Both terms appear together in 3620 documents
-  (This represents 98.32% of term1's documents and 97.76% of term2's documents)
-
-Sample documents where both terms co-occur (first 20):
-  - AP880222-0102
-  - AP880222-0103
-  - AP880222-0104
-  - AP880222-0125
-  - AP880222-0139
-  - AP880222-0150
-  - AP880222-0189
-  - AP880222-0190
-  - AP880222-0196
-  - AP880223-0014
-  - AP880223-0119
-  - AP880223-0175
-  - AP880223-0180
-  - AP880223-0209
-  - AP880224-0122
-  - AP880224-0123
-  - AP880224-0209
-  - AP880224-0263
-  - AP880225-0014
-  - AP880225-0036
-
-Term Characteristics:
-  - Both terms have similar document frequencies, indicating they are equally common/rare in the corpus.
-  - Their co-occurrence suggests they may be:
-    * Related concepts or topics
-    * Terms that appear in similar contexts
-    * Part of the same domain or subject area
-  - The high co-occurrence rate suggests these terms are semantically related.
-
-How I found these terms:
-  1. Computed document frequency for all terms in the index.
-  2. Filtered to terms with moderate document frequency (50-5000 documents) for better results.
-  3. Sorted terms by document frequency.
-  4. For each term, checked nearby terms (within 20 positions) with similar DF (within 20% tolerance).
-  5. For pairs with similar DF, computed intersection of their sorted postings lists using a two-pointer algorithm.
-  6. Selected the pair with the highest co-occurrence count (at least 3 co-occurring documents).
+No suitable term pairs found with the specified criteria.
+Try adjusting tolerance or minimum co-occurrence threshold.
