@@ -1,0 +1,69 @@
+1. TOP 10 TERMS WITH HIGHEST DOCUMENT FREQUENCY:
+============================================================
+ 1. the                  : 242066 documents (99.70%)
+ 2. of                   : 238931 documents (98.41%)
+ 3. in                   : 236963 documents (97.60%)
+ 4. a                    : 236962 documents (97.60%)
+ 5. and                  : 236669 documents (97.48%)
+ 6. to                   : 235719 documents (97.09%)
+ 7. for                  : 219078 documents (90.23%)
+ 8. said                 : 218300 documents (89.91%)
+ 9. on                   : 213234 documents (87.82%)
+10. that                 : 204380 documents (84.18%)
+
+2. TOP 10 TERMS WITH LOWEST DOCUMENT FREQUENCY:
+============================================================
+ 1. memphia              :      1 documents ( 0.00%)
+ 2. platinumsellers      :      1 documents ( 0.00%)
+ 3. platinumhaired       :      1 documents ( 0.00%)
+ 4. conomination         :      1 documents ( 0.00%)
+ 5. fiverecord           :      1 documents ( 0.00%)
+ 6. specifially          :      1 documents ( 0.00%)
+ 7. indescretion         :      1 documents ( 0.00%)
+ 8. phofo                :      1 documents ( 0.00%)
+ 9. whitewigged          :      1 documents ( 0.00%)
+10. metroiii             :      1 documents ( 0.00%)
+
+3. CHARACTERISTICS EXPLANATION:
+============================================================
+CHARACTERISTICS ANALYSIS:
+============================================================
+
+HIGH DOCUMENT FREQUENCY TERMS:
+------------------------------------------------------------
+Terms: the, of, in, a, and, to, for, said, on, that
+
+Characteristics:
+1. These are typically common words (stop words) like 'the', 'a', 'and', etc.
+2. They appear in a very large proportion of documents (often 50-90%+).
+3. They have low discriminative power - they don't help distinguish between documents.
+4. They are usually short, common function words or very general content words.
+5. In information retrieval, these terms are often removed or down-weighted.
+
+LOW DOCUMENT FREQUENCY TERMS:
+------------------------------------------------------------
+Terms: memphia, platinumsellers, platinumhaired, conomination, fiverecord, specifially, indescretion, phofo, whitewigged, metroiii
+
+Characteristics:
+1. These are rare or specialized terms that appear in very few documents.
+2. They have high discriminative power - they are good at identifying specific documents.
+3. They often represent:
+   - Proper nouns (names, places, organizations)
+   - Technical terms
+   - Rare concepts or specialized vocabulary
+   - Typos or unusual spellings
+4. They are useful for precision in search (finding very specific documents).
+5. However, they may have low recall if used alone in queries.
+
+KEY DIFFERENCES:
+------------------------------------------------------------
+• Discriminative Power: Low-DF terms are highly discriminative; High-DF terms are not.
+• Use in IR: Low-DF terms are good for precision; High-DF terms are often filtered.
+• Vocabulary: High-DF terms are common/general; Low-DF terms are specific/rare.
+• Coverage: High-DF terms appear in many docs; Low-DF terms appear in few docs.
+
+4. TERMS WITH SIMILAR DOCUMENT FREQUENCIES THAT CO-OCCUR:
+============================================================
+
+No suitable term pairs found with the specified criteria.
+Try adjusting tolerance or minimum co-occurrence threshold.
