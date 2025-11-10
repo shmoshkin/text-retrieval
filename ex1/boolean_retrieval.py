@@ -1,18 +1,12 @@
 """
-Boolean Retrieval Model Implementation
 
-This module implements a BooleanRetrieval class that processes Boolean queries
-in Reverse Polish Notation (RPN) and retrieves matching documents using an
+This module implements a BooleanRetrieval class that processes Boolean queries and retrieves matching documents using an
 inverted index.
 
-The implementation uses efficient algorithms that leverage the fact that
-postings lists are sorted by internal document IDs, avoiding the use of
-set data structures for set operations.
 """
 
-from typing import List, Set
 from inverted_index import InvertedIndex
-
+from typing import List
 
 class BooleanRetrieval:
     """
@@ -39,7 +33,7 @@ class BooleanRetrieval:
         """
         Compute the intersection of two sorted postings lists.
         
-        Uses a two-pointer merge algorithm that takes advantage of the fact
+        Uses two pointers that takes advantage of the fact
         that both lists are sorted by internal document ID.
         
         Args:
@@ -66,9 +60,9 @@ class BooleanRetrieval:
     
     def _union(self, list1: List[int], list2: List[int]) -> List[int]:
         """
-        Compute the union of two sorted postings lists.
+        The union of two sorted postings lists.
         
-        Uses a two-pointer merge algorithm that takes advantage of the fact
+        Uses two pointers that takes advantage of the fact
         that both lists are sorted by internal document ID.
         
         Args:
@@ -107,10 +101,10 @@ class BooleanRetrieval:
     
     def _complement(self, postings: List[int]) -> List[int]:
         """
-        Compute the complement of a postings list.
+        The complement of a postings list.
         
         Returns all document IDs (0 to total_docs-1) that are NOT in the
-        given postings list. Uses a merge-based algorithm on sorted lists.
+        given postings list. Uses two pointers on sorted lists.
         
         Args:
             postings: A sorted list of internal document IDs to complement.
@@ -136,10 +130,10 @@ class BooleanRetrieval:
     
     def _and_not(self, list1: List[int], list2: List[int]) -> List[int]:
         """
-        Compute list1 AND NOT list2.
+        list1 AND NOT list2.
         
         Returns documents that are in list1 but not in list2.
-        Uses a two-pointer algorithm on sorted lists.
+        Uses two pointers on sorted lists.
         
         Args:
             list1: First sorted list of internal document IDs.
