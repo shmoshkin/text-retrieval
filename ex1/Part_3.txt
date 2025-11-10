@@ -8,16 +8,16 @@
  6. to                   : 235719 documents (97.09%)
  7. for                  : 219078 documents (90.23%)
  8. said                 : 218300 documents (89.91%)
- 9. on                   : 213234 documents (87.83%)
+ 9. on                   : 213234 documents (87.82%)
 10. that                 : 204380 documents (84.18%)
 
 2. TOP 10 TERMS WITH LOWEST DOCUMENT FREQUENCY:
 ============================================================
  1. memphia              :      1 documents ( 0.00%)
- 2. conomination         :      1 documents ( 0.00%)
+ 2. platinumsellers      :      1 documents ( 0.00%)
  3. platinumhaired       :      1 documents ( 0.00%)
- 4. fiverecord           :      1 documents ( 0.00%)
- 5. platinumsellers      :      1 documents ( 0.00%)
+ 4. conomination         :      1 documents ( 0.00%)
+ 5. fiverecord           :      1 documents ( 0.00%)
  6. specifially          :      1 documents ( 0.00%)
  7. indescretion         :      1 documents ( 0.00%)
  8. phofo                :      1 documents ( 0.00%)
@@ -42,7 +42,7 @@ Characteristics:
 
 LOW DOCUMENT FREQUENCY TERMS:
 ------------------------------------------------------------
-Terms: memphia, conomination, platinumhaired, fiverecord, platinumsellers, specifially, indescretion, phofo, whitewigged, metroiii
+Terms: memphia, platinumsellers, platinumhaired, conomination, fiverecord, specifially, indescretion, phofo, whitewigged, metroiii
 
 Characteristics:
 1. These are rare or specialized terms that appear in very few documents.

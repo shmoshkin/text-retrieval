@@ -1,13 +1,17 @@
 """
-Inverted Index Implementation for AP Collection
-
 This module implements an InvertedIndex class that builds an inverted index
-from the AP corpus. The inverted index maps terms to lists of document IDs
+The inverted index maps terms to lists of document IDs
 that contain those terms, enabling efficient document retrieval.
 
-The class uses successive integers (0, 1, 2, ...) as internal document IDs
-for optimized query processing, while maintaining a mapping to the original
-document IDs (DOCNO) for reference.
+The class uses integers as internal document IDs starting from 0
+while maintaining a mapping to the original document IDs (DOCNO).
+
+The class is able to parse XML files and build the inverted index from them,
+using a fallback regex-based extraction method if standard XML parsing fails.
+
+The class is able to get the postings list for a given term.
+The class is able to get the original document ID (DOCNO) for a given internal document ID.
+The class is able to get the vocabulary size, and the total number of documents indexed.
 """
 
 import os
@@ -21,10 +25,6 @@ class InvertedIndex:
     """
     A class to build and manage an inverted index for the AP collection.
     
-    The inverted index is a data structure that maps terms to the list of
-    documents (by internal ID) that contain those terms. This enables efficient
-    lookup of all documents containing a specific term.
-    
     Attributes:
         index (Dict[str, List[int]]): The inverted index mapping terms to
             sorted lists of internal document IDs.
@@ -36,8 +36,6 @@ class InvertedIndex:
     def __init__(self):
         """
         Initialize an empty InvertedIndex.
-        
-        The index starts empty and is populated by calling the build_index method.
         """
         # Inverted index: term -> sorted list of internal document IDs
         self.index: Dict[str, List[int]] = defaultdict(list)
@@ -59,7 +57,7 @@ class InvertedIndex:
             doc_element: An XML Element representing a <DOC> tag.
             
         Returns:
-            A tuple (docno, text) where:
+            A tuple (docno, text) containing:
                 - docno (str): The document ID from <DOCNO> tag
                 - text (str): Concatenated text from all <TEXT> tags
         """
@@ -85,9 +83,6 @@ class InvertedIndex:
     def _tokenize(self, text: str) -> List[str]:
         """
         Tokenize text by splitting on whitespace.
-        
-        Since the text is already preprocessed (lowercased and punctuation
-        removed), we only need to split on whitespace.
         
         Args:
             text: The text string to tokenize.
@@ -136,11 +131,10 @@ class InvertedIndex:
         """
         Parse an XML file containing multiple documents.
         
-        The file may contain multiple <DOC> elements without a root element.
+        The file may contain multiple <DOC> elements.
         Each document is processed and added to the inverted index.
         
-        Uses a fallback regex-based extraction method if standard XML parsing fails,
-        allowing extraction of documents from malformed XML files.
+        Uses a fallback regex-based extraction method if standard XML parsing fails.
         
         Args:
             file_path: Path to the XML file to parse.
