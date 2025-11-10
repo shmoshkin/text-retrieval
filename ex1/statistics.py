@@ -1,5 +1,5 @@
 """
-Part 3: Statistics Analysis
+Statistics Analysis
 
 This script analyzes the inverted index to compute:
 1. Top 10 terms with highest document frequency
@@ -9,15 +9,11 @@ This script analyzes the inverted index to compute:
 """
 
 from inverted_index import InvertedIndex
-from collections import Counter
-import math
 
 
 def compute_document_frequencies(index: InvertedIndex):
     """
-    Compute document frequency for each term in the index.
-    
-    Document frequency = number of documents containing the term.
+    The document frequency for each term in the index.
     
     Args:
         index: An InvertedIndex instance.
@@ -28,7 +24,6 @@ def compute_document_frequencies(index: InvertedIndex):
     doc_frequencies = {}
     
     for term, postings in index.index.items():
-        # Document frequency is the length of the postings list
         doc_frequencies[term] = len(postings)
     
     return doc_frequencies
@@ -56,8 +51,7 @@ def find_top_terms(doc_frequencies, top_n=10, highest=True):
 def find_terms_with_similar_df(doc_frequencies, index: InvertedIndex, 
                                 tolerance=0.10, min_cooccur=5, max_pairs=1000):
     """
-    Find two terms with similar document frequencies that co-occur in documents.
-    Optimized version that samples pairs efficiently.
+    Find two terms with similar document frequencies that in documents.
     
     Args:
         doc_frequencies: Dictionary mapping terms to document frequencies.

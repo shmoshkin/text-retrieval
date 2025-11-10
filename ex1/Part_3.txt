@@ -49,7 +49,7 @@ Characteristics:
 2. They have high discriminative power - they are good at identifying specific documents.
 3. They often represent:
    - Proper nouns (names, places, organizations)
-   - Technical terms or jargon
+   - Technical terms
    - Rare concepts or specialized vocabulary
    - Typos or unusual spellings
 4. They are useful for precision in search (finding very specific documents).
