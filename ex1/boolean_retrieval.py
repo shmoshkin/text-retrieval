@@ -306,5 +306,5 @@ if __name__ == "__main__":
     
     # Process queries
     print("\nProcessing queries...")
-    retrieval.process_queries_file("queries/query.txt", "Part_2.txt")
+    retrieval.process_queries_file("BooleanQueries.txt", "Part_2.txt")
 
