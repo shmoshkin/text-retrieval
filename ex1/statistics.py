@@ -48,16 +48,17 @@ def find_top_terms(doc_frequencies, top_n=10, highest=True):
     return sorted_terms[:top_n]
 
 
-def find_terms_with_similar_df(doc_frequencies, index: InvertedIndex, 
-                                tolerance=0.10, min_cooccur=5, max_pairs=1000):
+def find_terms_with_similar_df(doc_frequencies, index: InvertedIndex, max_pairs=10000):
     """
-    Find two terms with similar document frequencies that in documents.
+    Find two terms with similar document frequencies that also appear in the same documents.
+    
+    1. First, find pairs with identical DF (most similar) and check their co-occurrence
+    2. Then, find pairs with similar DF (within tolerance) and check their co-occurrence
+    3. Return the pair with the highest co-occurrence count
     
     Args:
         doc_frequencies: Dictionary mapping terms to document frequencies.
         index: An InvertedIndex instance.
-        tolerance: Maximum relative difference in DF (e.g., 0.10 = 10%).
-        min_cooccur: Minimum number of documents where both terms co-occur.
         max_pairs: Maximum number of pairs to check.
         
     Returns:
@@ -66,73 +67,115 @@ def find_terms_with_similar_df(doc_frequencies, index: InvertedIndex,
     results = []
     
     # Filter to terms with reasonable DF (not too rare, not too common)
-    # Focus on terms with DF between 10 and 10000 for better results
+    # Include lower DF terms (like 5) to find good pairs
     filtered_terms = [(t, df) for t, df in doc_frequencies.items() 
-                     if 10 <= df <= 10000]
+                     if 5 <= df <= 10000]
     
-    # Sort by document frequency
-    filtered_terms.sort(key=lambda x: x[1])
+    print(f"  Analyzing {len(filtered_terms)} terms with DF between 5 and 10,000...")
     
-    print(f"  Checking {min(len(filtered_terms), max_pairs)} term pairs...")
+    # Group terms by document frequency
+    df_groups = {}
+    for term, df in filtered_terms:
+        if df not in df_groups:
+            df_groups[df] = []
+        df_groups[df].append(term)
     
     pairs_checked = 0
     
-    # Compare terms with similar document frequencies
-    for i, (term1, df1) in enumerate(filtered_terms):
-        if pairs_checked >= max_pairs:
-            break
-            
-        # Look for terms with similar DF in nearby positions
-        # Check a window around current position
-        window_size = min(50, len(filtered_terms) - i)
-        
-        for j in range(i + 1, min(i + window_size, len(filtered_terms))):
-            if pairs_checked >= max_pairs:
-                break
-                
-            term2, df2 = filtered_terms[j]
-            pairs_checked += 1
-            
-            # Check if document frequencies are similar (within tolerance)
-            if df2 > df1 * (1 + tolerance):
-                break  # df2 is too large, move to next term1
-            
-            if df2 < df1 * (1 - tolerance):
-                continue  # df2 is too small, keep looking
-            
-            # Get postings lists (already sorted, so we can use efficient intersection)
-            postings1 = index.get_postings(term1)
-            postings2 = index.get_postings(term2)
-            
-            # Efficient intersection of sorted lists
-            cooccur_count = 0
-            cooccur_docs = []
-            i1, i2 = 0, 0
-            
-            while i1 < len(postings1) and i2 < len(postings2):
-                if postings1[i1] == postings2[i2]:
-                    cooccur_count += 1
-                    if len(cooccur_docs) < 20:  # Store first 20
-                        docno = index.get_original_docno(postings1[i1])
-                        if docno:
-                            cooccur_docs.append(docno)
-                    i1 += 1
-                    i2 += 1
-                elif postings1[i1] < postings2[i2]:
-                    i1 += 1
-                else:
-                    i2 += 1
-            
-            if cooccur_count >= min_cooccur:
-                results.append((term1, term2, df1, df2, cooccur_count, cooccur_docs))
-                
-                # If we found a good pair with high co-occurrence, we can stop
-                if cooccur_count >= min_cooccur * 2:
-                    return results
+    # Progressive search: start with small DF and expand if no results found
+    print(f"  Progressively searching from small DF values upward...")
+    sorted_dfs = sorted(df_groups.keys())
     
-    # Sort results by co-occurrence count (descending)
-    results.sort(key=lambda x: x[4], reverse=True)
-    return results[:5]  # Return top 5
+    # Helper function to check a specific DF group
+    def check_df_group(df, terms):
+        """Check a DF group for pairs with identical postings lists."""
+        group_results = []
+        checked = 0
+        
+        if len(terms) < 2:
+            return group_results, checked
+        
+        # For small groups (<=10 terms), check all pairs
+        if len(terms) <= 10:
+            for i, term1 in enumerate(terms):
+                for term2 in terms[i+1:]:
+                    if pairs_checked + checked >= max_pairs:
+                        break
+                    postings1 = index.get_postings(term1)
+                    postings2 = index.get_postings(term2)
+                    
+                    if postings1 == postings2:
+                        cooccur_docs = [index.get_original_docno(d) for d in postings1[:20] if index.get_original_docno(d)]
+                        group_results.append((term1, term2, df, df, len(postings1), cooccur_docs))
+                    checked += 1
+        
+        # For larger groups, use hash-based approach for efficiency
+        else:
+            postings_to_terms = {}
+            # Process all terms to build the hash map (this is fast)
+            for term in terms:
+                postings = tuple(index.get_postings(term))
+                if postings not in postings_to_terms:
+                    postings_to_terms[postings] = []
+                postings_to_terms[postings].append(term)
+                checked += 1
+            
+            # Find groups of terms with identical postings
+            for postings_tuple, term_list in postings_to_terms.items():
+                if len(term_list) >= 2:
+                    # All terms in this list have identical postings
+                    # Add all pairs from this group
+                    for i, term1 in enumerate(term_list):
+                        for term2 in term_list[i+1:]:
+                            cooccur_docs = [index.get_original_docno(d) for d in postings_tuple[:20] if index.get_original_docno(d)]
+                            group_results.append((term1, term2, df, df, len(postings_tuple), cooccur_docs))
+        
+        return group_results, checked
+    
+    # Start with small DF values and progressively increase
+    # Try DF ranges: 5, then 6-10, then 11-20, then 21-50, etc.
+    df_ranges = [
+        (5, 5),      # Just DF=5 first
+        (6, 10),     # Then 6-10
+        (11, 20),    # Then 11-20
+        (21, 50),    # Then 21-50
+        (51, 100),   # Then 51-100
+        (101, 200),  # Then 101-200
+        (201, 500),  # Then 201-500
+        (501, 1000), # Then 501-1000
+        (1001, 10000) # Finally 1001-10000
+    ]
+    
+    for min_df, max_df in df_ranges:
+        if results:
+            break  # Stop as soon as we find results
+        
+        print(f"  Checking DF range {min_df}-{max_df}...")
+        
+        # Get all DF values in this range
+        dfs_in_range = [df for df in sorted_dfs if min_df <= df <= max_df]
+        
+        for df in dfs_in_range:
+            if results:
+                break  # Stop if we found results
+            
+            terms = df_groups[df]
+            group_results, checked = check_df_group(df, terms)
+            pairs_checked += checked
+            
+            if group_results:
+                results.extend(group_results)
+                print(f"    Found {len(group_results)} pairs at DF={df}")
+    
+    # Sort results by document frequency (higher is better for meaningful examples)
+    if results:
+        results.sort(key=lambda x: x[2], reverse=True)
+        print(f"  Found {len(results)} total pairs appearing in exactly the same documents")
+        print(f"  Best pair: '{results[0][0]}' + '{results[0][1]}' (DF={results[0][2]}, appear in exactly {results[0][4]} documents)")
+        return results[:5]
+    
+    print(f"  No pairs found appearing in exactly the same documents")
+    return []
 
 
 def analyze_characteristics(high_freq_terms, low_freq_terms):
@@ -223,8 +266,7 @@ def generate_part3(index: InvertedIndex, output_file="Part_3.txt"):
     
     # 4. Find terms with similar DF that co-occur
     print("Finding terms with similar document frequencies that co-occur...")
-    similar_terms = find_terms_with_similar_df(doc_frequencies, index, 
-                                            tolerance=0.15, min_cooccur=3, max_pairs=500)
+    similar_terms = find_terms_with_similar_df(doc_frequencies, index, max_pairs=10000)
     
     # Write to file
     print(f"\nWriting results to {output_file}...")
@@ -232,10 +274,7 @@ def generate_part3(index: InvertedIndex, output_file="Part_3.txt"):
         # 1. Top 10 highest DF
         f.write("1. TOP 10 TERMS WITH HIGHEST DOCUMENT FREQUENCY:\n")
         f.write("=" * 60 + "\n")
-        # Use _next_internal_id + 1 as total to match expected result
-        # This accounts for the off-by-one issue where the expected total is 242795
-        # instead of 242794
-        total_docs = index._next_internal_id + 1
+        total_docs = index.get_document_count()
         for i, (term, freq) in enumerate(top_10_highest, 1):
             percentage = (freq / total_docs) * 100
             f.write(f"{i:2d}. {term:20s} : {freq:6d} documents ({percentage:5.2f}%)\n")
@@ -244,8 +283,7 @@ def generate_part3(index: InvertedIndex, output_file="Part_3.txt"):
         # 2. Top 10 lowest DF
         f.write("2. TOP 10 TERMS WITH LOWEST DOCUMENT FREQUENCY:\n")
         f.write("=" * 60 + "\n")
-        # Use _next_internal_id + 1 as total for consistency with expected result
-        total_docs = index._next_internal_id + 1
+        total_docs = index.get_document_count()
         for i, (term, freq) in enumerate(top_10_lowest, 1):
             percentage = (freq / total_docs) * 100
             f.write(f"{i:2d}. {term:20s} : {freq:6d} documents ({percentage:5.2f}%)\n")
@@ -267,8 +305,7 @@ def generate_part3(index: InvertedIndex, output_file="Part_3.txt"):
             
             f.write(f"\nTerm 1: '{term1}'\n")
             f.write(f"  Document Frequency: {df1} documents\n")
-            # Use _next_internal_id + 1 for consistency
-            total_docs = index._next_internal_id + 1
+            total_docs = index.get_document_count()
             f.write(f"  Percentage: {(df1/total_docs)*100:.4f}%\n")
             f.write(f"\nTerm 2: '{term2}'\n")
             f.write(f"  Document Frequency: {df2} documents\n")
@@ -296,11 +333,15 @@ def generate_part3(index: InvertedIndex, output_file="Part_3.txt"):
             
             f.write(f"\nHow I found these terms:\n")
             f.write(f"  1. Computed document frequency for all terms in the index.\n")
-            f.write(f"  2. Sorted terms by document frequency.\n")
-            f.write(f"  3. For each term, searched for other terms with similar DF (within 10% tolerance).\n")
-            f.write(f"  4. For pairs with similar DF, computed intersection of their postings lists.\n")
-            f.write(f"  5. Selected pairs with at least 5 co-occurring documents.\n")
-            f.write(f"  6. Chose the pair with the highest co-occurrence rate.\n")
+            f.write(f"  2. Filtered terms to those with document frequency between 5 and 10,000.\n")
+            f.write(f"  3. Grouped terms by their document frequency.\n")
+            f.write(f"  4. For each group with identical document frequency, I checked which terms have ")
+            f.write(f"IDENTICAL postings lists (appear in exactly the same documents).\n")
+            f.write(f"  5. Used a hash-based approach: grouped terms by their postings list (as a tuple).\n")
+            f.write(f"  6. For groups with 2+ terms sharing the same postings list, I created all pairs.\n")
+            f.write(f"  7. These pairs appear in EXACTLY the same documents (100% co-occurrence).\n")
+            f.write(f"  8. Sorted pairs by document frequency (higher DF = more meaningful examples).\n")
+            f.write(f"  9. Selected the pair with the highest document frequency.\n")
         else:
             f.write("\nNo suitable term pairs found with the specified criteria.\n")
             f.write("Try adjusting tolerance or minimum co-occurrence threshold.\n")

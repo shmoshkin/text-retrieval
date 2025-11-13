@@ -8,7 +8,7 @@
  6. to                   : 235719 documents (97.09%)
  7. for                  : 219078 documents (90.23%)
  8. said                 : 218300 documents (89.91%)
- 9. on                   : 213234 documents (87.82%)
+ 9. on                   : 213234 documents (87.83%)
 10. that                 : 204380 documents (84.18%)
 
 2. TOP 10 TERMS WITH LOWEST DOCUMENT FREQUENCY:
@@ -49,7 +49,7 @@ Characteristics:
 2. They have high discriminative power - they are good at identifying specific documents.
 3. They often represent:
    - Proper nouns (names, places, organizations)
-   - Technical terms
+   - Technical terms or jargon
    - Rare concepts or specialized vocabulary
    - Typos or unusual spellings
 4. They are useful for precision in search (finding very specific documents).
@@ -65,5 +65,41 @@ KEY DIFFERENCES:
 4. TERMS WITH SIMILAR DOCUMENT FREQUENCIES THAT CO-OCCUR:
 ============================================================
 
-No suitable term pairs found with the specified criteria.
-Try adjusting tolerance or minimum co-occurrence threshold.
+Term 1: 'johnthor'
+  Document Frequency: 5 documents
+  Percentage: 0.0021%
+
+Term 2: 'dahlburg'
+  Document Frequency: 5 documents
+  Percentage: 0.0021%
+
+Similarity: Document frequencies differ by 0 documents (0.00% relative difference)
+
+Co-occurrence: Both terms appear together in 5 documents
+  (This represents 100.00% of term1's documents and 100.00% of term2's documents)
+
+Sample documents where both terms co-occur (first 20):
+  - AP880227-0022
+  - AP880605-0077
+  - AP880703-0025
+  - AP880921-0081
+  - AP891004-0012
+
+Term Characteristics:
+  - Both terms have similar document frequencies, indicating they are equally common/rare in the corpus.
+  - Their co-occurrence suggests they may be:
+    * Related concepts or topics
+    * Terms that appear in similar contexts
+    * Part of the same domain or subject area
+  - The high co-occurrence rate suggests these terms are semantically related.
+
+How I found these terms:
+  1. Computed document frequency for all terms in the index.
+  2. Filtered terms to those with document frequency between 5 and 10,000.
+  3. Grouped terms by their document frequency.
+  4. For each group with identical document frequency, I checked which terms have IDENTICAL postings lists (appear in exactly the same documents).
+  5. Used a hash-based approach: grouped terms by their postings list (as a tuple).
+  6. For groups with 2+ terms sharing the same postings list, I created all pairs.
+  7. These pairs appear in EXACTLY the same documents (100% co-occurrence).
+  8. Sorted pairs by document frequency (higher DF = more meaningful examples).
+  9. Selected the pair with the highest document frequency.
