@@ -26,11 +26,10 @@ class Config:
     """Configuration parameters for the RAG system."""
     
     # Data paths
-    DATA_DIR = Path("ex3/data")
-    TRAIN_CSV = DATA_DIR / "train.csv"
-    TEST_CSV = DATA_DIR / "test.csv"
-    PREDICTIONS_CSV = Path("ex3/predictions.csv")
-    CHECKPOINT_FILE = Path("ex3/checkpoint.json")
+    TRAIN_CSV = "./train.csv"
+    TEST_CSV = "./test.csv"
+    PREDICTIONS_CSV = "./predictions.csv"
+    CHECKPOINT_FILE = "./checkpoint.json"
     
     # HuggingFace token (set as environment variable or update here)
     HF_TOKEN = os.getenv("KAGGLE_API_TOKEN", "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")
@@ -296,9 +295,11 @@ def load_llm_pipeline(config=None):
         pipeline = transformers.pipeline(
             "text-generation",
             model=config.MODEL_ID,
-            model_kwargs={"torch_dtype": torch.bfloat16, "device_map": "auto"},
+            model_kwargs={"torch_dtype": torch.bfloat16},
             device_map="auto",
-        )
+        )   
+
+
         
         print("LLM model loaded successfully.")
         return pipeline
