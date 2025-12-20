@@ -34,26 +34,34 @@ class Config:
     # HuggingFace token (set as environment variable or update here)
     HF_TOKEN = os.getenv("KAGGLE_API_TOKEN", "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")
     
-    # Retrieval parameters
-    K = 10  # Number of passages to retrieve
-    RETRIEVAL_METHOD = "qld"  # "qld" (primary, from course) or "bm25" (optional)
-    QLD_MU = 1000  # Dirichlet smoothing parameter for QLD (default from template)
+    # Retrieval parameters - OPTIMIZED
+    K = 30  # Increased for better recall - more passages = better chance of finding answer
+    RETRIEVAL_METHOD = "qld"  # "qld", "bm25", "rrf" (reciprocal rank fusion)
+    QLD_MU = 1000  # Standard value - tune between 500-2000
     # Note: BM25 mentioned but not deeply covered in course - included as optional alternative
-    BM25_K1 = 0.9  # BM25 k1 parameter (if using BM25)
-    BM25_B = 0.4  # BM25 b parameter (if using BM25)
-    CONTEXT_LENGTH = 800  # Max characters per passage (0 = no limit)
+    BM25_K1 = 1.2  # BM25 k1 parameter (standard: 1.2)
+    BM25_B = 0.75  # BM25 b parameter (standard: 0.75)
+    CONTEXT_LENGTH = 0  # NO TRUNCATION! Keep full passages
     
-    # LLM parameters
+    # Advanced retrieval options
+    USE_RRF = False  # Reciprocal Rank Fusion - combine QLD and BM25 results
+    RRF_K = 60  # Number of docs to retrieve from each method for RRF
+    RRF_FINAL_K = 30  # Final number of docs after RRF fusion
+    
+    # LLM parameters - OPTIMIZED
     MODEL_ID = "meta-llama/Llama-3.2-1B-Instruct"
-    MAX_NEW_TOKENS = 256
-    TEMPERATURE = 0.6
-    TOP_P = 0.9
-    DO_SAMPLE = True
+    MAX_NEW_TOKENS = 64  # Shorter answers reduce verbosity and extraction errors
+    TEMPERATURE = 0.0  # Deterministic output for consistency
+    TOP_P = 0.95  # Standard value for quality
+    DO_SAMPLE = False  # Deterministic when temperature=0
     
     # Processing
     BATCH_SIZE = 1  # Process one question at a time
     SAVE_CHECKPOINT_EVERY = 50  # Save checkpoint every N questions
     RESUME_FROM_CHECKPOINT = True  # Resume if checkpoint exists
+    
+    # Debug options
+    DEBUG_PRINT_CONTEXTS = False  # When True, print retrieved passages before sending to LLM
 
 
 # ============================================================================
@@ -153,22 +161,66 @@ def get_context_bm25(searcher, query, k, k1=0.9, b=0.4):
     return hits
 
 
-# Note: Hybrid QLD+BM25 removed - not covered in course material
-# Focus on QLD (primary method) and BM25 (optional alternative) separately
+def reciprocal_rank_fusion(hits_list, k=60, final_k=30):
+    """
+    Reciprocal Rank Fusion (RRF) to combine multiple retrieval results.
+    
+    Formula: RRF(d) = Σ(1 / (k + rank_i(d))) for each retrieval method i
+    
+    Args:
+        hits_list: List of hit lists from different retrieval methods
+        k: RRF constant (typically 60)
+        final_k: Number of top documents to return after fusion
+    
+    Returns:
+        List of fused hits sorted by RRF score
+    """
+    doc_scores = {}
+    
+    # Calculate RRF score for each document
+    for method_hits in hits_list:
+        for rank, hit in enumerate(method_hits, start=1):
+            docid = hit.docid
+            rrf_score = 1.0 / (k + rank)
+            
+            if docid not in doc_scores:
+                doc_scores[docid] = {
+                    'score': 0.0,
+                    'hit': hit  # Keep first hit object we encounter
+                }
+            doc_scores[docid]['score'] += rrf_score
+    
+    # Sort by RRF score (descending)
+    sorted_docs = sorted(doc_scores.items(), key=lambda x: x[1]['score'], reverse=True)
+    
+    # Return top final_k hits
+    fused_hits = []
+    for docid, data in sorted_docs[:final_k]:
+        # Create a simple hit-like object with docid
+        class FusedHit:
+            def __init__(self, docid, score):
+                self.docid = docid
+                self.score = score
+        
+        fused_hits.append(FusedHit(docid, data['score']))
+    
+    return fused_hits
 
 
 def get_context(searcher, query, k=10, retrieval_method="qld", config=None):
     """
     Retrieve relevant passages from Wikipedia index.
     
-    Primary method: QLD (Query Likelihood Dirichlet) - main method from course
-    Optional: BM25 - mentioned but not deeply covered, included for experimentation
+    Methods supported:
+    - "qld": Query Likelihood Dirichlet (primary method from course)
+    - "bm25": BM25 ranking (optional alternative)
+    - "rrf": Reciprocal Rank Fusion - combines QLD and BM25 results
     
     Args:
         searcher: Pyserini SimpleSearcher instance
         query: Question string
         k: Number of passages to retrieve
-        retrieval_method: "qld" (primary) or "bm25" (optional)
+        retrieval_method: "qld", "bm25", or "rrf"
         config: Config object with parameters
     
     Returns:
@@ -177,15 +229,21 @@ def get_context(searcher, query, k=10, retrieval_method="qld", config=None):
     if config is None:
         config = Config()
     
-    # Retrieve hits based on method
-    # Primary method: QLD (Query Likelihood Dirichlet) - main method from course
-    if retrieval_method == "qld":
+    # Reciprocal Rank Fusion: combine QLD and BM25
+    if retrieval_method == "rrf" or config.USE_RRF:
+        # Retrieve from both methods
+        qld_hits = get_context_qld(searcher, query, config.RRF_K, mu=config.QLD_MU)
+        bm25_hits = get_context_bm25(searcher, query, config.RRF_K, k1=config.BM25_K1, b=config.BM25_B)
+        
+        # Fuse results using RRF
+        hits = reciprocal_rank_fusion([qld_hits, bm25_hits], k=config.RRF_K, final_k=config.RRF_FINAL_K)
+        
+    elif retrieval_method == "qld":
         hits = get_context_qld(searcher, query, k, mu=config.QLD_MU)
     elif retrieval_method == "bm25":
-        # BM25 mentioned but not deeply covered - included as optional alternative
         hits = get_context_bm25(searcher, query, k, k1=config.BM25_K1, b=config.BM25_B)
     else:
-        raise ValueError(f"Unknown retrieval method: {retrieval_method}. Use 'qld' (primary) or 'bm25' (optional)")
+        raise ValueError(f"Unknown retrieval method: {retrieval_method}. Use 'qld', 'bm25', or 'rrf'")
     
     # Extract passage text
     contexts = []
@@ -215,31 +273,57 @@ def get_context(searcher, query, k=10, retrieval_method="qld", config=None):
 
 def create_message(query, contexts):
     """
-    Create prompt messages for LLM.
-    
-    Fixed bug: uses 'query' parameter instead of undefined 'question' variable.
-    Improved prompt for better answer extraction.
+    Create prompt messages for LLM with few-shot examples.
+    Uses simpler context format and teaches proper answer extraction.
     """
-    # Format contexts
-    context_text = '\n\n'.join([f"Passage {i+1}: {ctx}" for i, ctx in enumerate(contexts)])
+    # Simpler format: just join contexts with double newline (no passage numbering)
+    context_text = '\n\n'.join(contexts)
     
-    system_prompt = """You are a question-answering assistant. Your task is to provide concise, accurate answers based ONLY on the information provided in the passages below. 
+    system_prompt = """Answer questions using ONLY the provided context. Extract the specific answer - don't repeat the question or use generic words. Give concrete names, places, or things.
 
-Rules:
-1. Use ONLY information from the provided passages
-2. Provide a SHORT, DIRECT answer (typically 1-5 words)
-3. Do NOT include explanations, citations, or additional context
-4. If the answer is not in the passages, respond with "I don't know"
-5. Extract the answer directly - do not paraphrase unnecessarily"""
+CRITICAL: Extract just the answer entity, not full sentences or explanations.
 
-    user_prompt = f"""Based on the following passages, provide a concise answer to the question.
+Examples:
 
-Passages:
-{context_text}
+Context: "William Shakespeare was an English playwright, poet and actor. He is widely regarded as the greatest writer in the English language. His works include Romeo and Juliet, Hamlet, and Macbeth."
+Question: Who wrote Romeo and Juliet?
+Answer: William Shakespeare
 
-Question: {query}
+Context: "Paris is the capital and most populous city of France. It is located in the north-central part of the country."
+Question: What is the capital of France?
+Answer: Paris
 
-Answer:"""
+Context: "North Port is a city in Sarasota County, Florida, United States. It is part of the North Port-Bradenton-Sarasota Metropolitan Statistical Area."
+Question: Where is North Port Florida located?
+Answer: Sarasota County
+
+Context: "Joakim Noah plays for the Chicago Bulls in the NBA. He was drafted in 2007."
+Question: Who does Joakim Noah play for?
+Answer: Chicago Bulls
+
+Context: "Iceland is a Nordic island country in the North Atlantic Ocean. Iceland belongs to the Nordic countries."
+Question: What country does Iceland belong to?
+Answer: Iceland
+
+Context: "The Philippines gained independence from the United States of America in 1946 after World War II."
+Question: Who did the Philippines gain independence from?
+Answer: United States of America
+
+Context: "You are currently in the North American Eastern Time Zone, which is UTC-5."
+Question: What time zone am I in?
+Answer: North American Eastern Time Zone
+
+Context: "Shakespeare was born in Stratford-upon-Avon in 1564. He died in 1616 at the age of 52."
+Question: What year was Shakespeare born?
+Answer: 1564
+
+Context: "Natalie Portman played Padmé Amidala in the Star Wars prequel trilogy. The character first appeared in Episode I: The Phantom Menace."
+Question: What character did Natalie Portman play in Star Wars?
+Answer: Padmé Amidala
+
+Now answer this question:"""
+
+    user_prompt = f"Context: {context_text}\n\nQuestion: {query}\n\nAnswer:"
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -249,32 +333,267 @@ Answer:"""
     return messages
 
 
+def print_contexts(query, contexts, max_chars=500, use_tqdm=False):
+    """
+    Print retrieved contexts for debugging and visibility.
+    
+    Args:
+        query: The question being asked
+        contexts: List of retrieved context strings
+        max_chars: Maximum characters to show per passage (default: 500)
+        use_tqdm: If True, use tqdm.write() instead of print() for better progress bar compatibility
+    """
+    # Use tqdm.write() if available and requested (for progress bar compatibility)
+    if use_tqdm:
+        try:
+            from tqdm import tqdm
+            write_func = tqdm.write
+        except ImportError:
+            write_func = print
+    else:
+        write_func = print
+    
+    write_func(f"\n{'='*80}")
+    write_func(f"Query: {query}")
+    write_func(f"Retrieved {len(contexts)} passages:")
+    write_func(f"{'='*80}")
+    for i, ctx in enumerate(contexts, 1):
+        preview = ctx[:max_chars] + "..." if len(ctx) > max_chars else ctx
+        write_func(f"\nPassage {i} ({len(ctx)} chars):")
+        write_func(preview)
+    write_func(f"{'='*80}\n")
+
+
 def extract_answer(text):
     """
-    Extract clean answer from LLM output.
-    Removes explanations, citations, and extra text.
+    Generic answer extraction that handles common LLM output patterns.
+    Removes prefixes, explanations, and formatting artifacts.
     """
     if not text:
         return "I don't know"
     
-    # Remove common prefixes
     text = text.strip()
     
-    # Remove explanations that might come after the answer
-    # Look for patterns like "The answer is X" or just extract first sentence
-    sentences = text.split('.')
-    if sentences:
-        first_sentence = sentences[0].strip()
-        # Remove question words if they appear
-        first_sentence = re.sub(r'^(The answer is|Answer:|The answer:|It is|It\'s)', '', first_sentence, flags=re.IGNORECASE)
-        first_sentence = first_sentence.strip()
-        
-        # If it's too long, it might be an explanation
-        if len(first_sentence.split()) <= 10:
-            return first_sentence
+    # CRITICAL: Early filtering for common error patterns BEFORE processing
+    # Filter out single digits (unless they're years like "1971")
+    text_lower = text.strip().lower()
+    if text_lower in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]:
+        # Check if it might be a year (4 digits) - if so, allow it
+        if not re.match(r'^\d{4}$', text.strip()):
+            return "I don't know"
     
-    # Fallback: return first 50 characters
-    return text[:50].strip()
+    # Filter out common error words and meta-commentary
+    invalid_answers = [
+        "what", "who", "where", "when", "which", "how",
+        "no answer", "no one", "none", "n/a", "na",
+        "i don't know", "i do not know", "i cannot", "i can't",
+        "the passages don't", "none of the passages"
+    ]
+    if text_lower in invalid_answers:
+        return "I don't know"
+    
+    # Remove common LLM response prefixes
+    prefixes = [
+        r'^(The answer is|Answer:|The answer:|It is|It\'s|According to|Based on|From the passage|The passage states|I can see that|Looking at)',
+        r'^(None of the passages|The passages don\'t|I cannot|I don\'t know|I do not know)',
+    ]
+    
+    for pattern in prefixes:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    
+    text = text.strip()
+    
+    # Check again after prefix removal (might have been hidden by prefix)
+    text_lower_after = text.strip().lower()
+    if text_lower_after in invalid_answers or text_lower_after in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]:
+        if not re.match(r'^\d{4}$', text.strip()):
+            return "I don't know"
+    
+    # Remove passage references (formatting artifacts)
+    text = re.sub(r'\[Passage\s+\d+\]', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\[.*?\]', '', text)
+    
+    # Extract quoted text if present (often the most accurate)
+    quoted_match = re.search(r'"([^"]+)"', text)
+    if quoted_match:
+        answer = quoted_match.group(1).strip()
+        if answer:
+            return answer
+    
+    # Remove trailing explanations (common pattern: "Answer. This is because...")
+    # Look for explanation indicators
+    explanation_patterns = [
+        r'\s+(because|since|as|which|that|who|where|when|plays for|is from|was|were|did|does|do)\s+.*$',
+        r'\s+\([^)]+\)\s*$',  # Parenthetical explanations
+    ]
+    
+    for pattern in explanation_patterns:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    
+    text = text.strip()
+    
+    # Normalize whitespace and newlines
+    text = re.sub(r'\s+', ' ', text)
+    text = text.replace('\n', ' ')
+    
+    # IMPROVED: Detect and extract entities from verbose answers
+    # Pattern 1: "X is Y" or "X was Y" → extract Y
+    pattern1 = re.search(r'\b(is|was|are|were)\s+(.+?)(?:\.|$)', text, re.IGNORECASE)
+    if pattern1:
+        entity = pattern1.group(2).strip().rstrip('.,;:')
+        words = entity.split()
+        if 1 <= len(words) <= 15:
+            return entity.strip('"\'')
+    
+    # Pattern 2: "X belongs to Y" → extract Y
+    pattern2 = re.search(r'belongs\s+to\s+(.+?)(?:\.|$)', text, re.IGNORECASE)
+    if pattern2:
+        entity = pattern2.group(1).strip().rstrip('.,;:')
+        words = entity.split()
+        if 1 <= len(words) <= 15:
+            return entity.strip('"\'')
+    
+    # Pattern 3: "X gained independence from Y" → extract Y
+    pattern3 = re.search(r'gained\s+independence\s+from\s+(.+?)(?:\.|$)', text, re.IGNORECASE)
+    if pattern3:
+        entity = pattern3.group(1).strip().rstrip('.,;:')
+        words = entity.split()
+        if 1 <= len(words) <= 15:
+            return entity.strip('"\'')
+    
+    # Pattern 4: "I am in X" or "I am from X" → extract X
+    pattern4 = re.search(r'I\s+am\s+(?:in|from)\s+(.+?)(?:\.|$)', text, re.IGNORECASE)
+    if pattern4:
+        entity = pattern4.group(1).strip().rstrip('.,;:')
+        words = entity.split()
+        if 1 <= len(words) <= 15:
+            return entity.strip('"\'')
+    
+    # Pattern 5: "X is located in Y" → extract Y
+    pattern5 = re.search(r'is\s+located\s+in\s+(.+?)(?:\.|$)', text, re.IGNORECASE)
+    if pattern5:
+        entity = pattern5.group(1).strip().rstrip('.,;:')
+        words = entity.split()
+        if 1 <= len(words) <= 15:
+            return entity.strip('"\'')
+    
+    # Pattern 6: "X is named Y" or "X is known as Y" → extract Y
+    pattern6 = re.search(r'is\s+(?:named|known\s+as)\s+(.+?)(?:\.|$)', text, re.IGNORECASE)
+    if pattern6:
+        entity = pattern6.group(1).strip().rstrip('.,;:')
+        words = entity.split()
+        if 1 <= len(words) <= 15:
+            return entity.strip('"\'')
+    
+    # Pattern 7: "X plays for Y" → extract Y (for "who does X play for" questions)
+    pattern7 = re.search(r'plays?\s+for\s+(.+?)(?:\.|$)', text, re.IGNORECASE)
+    if pattern7:
+        entity = pattern7.group(1).strip().rstrip('.,;:')
+        words = entity.split()
+        if 1 <= len(words) <= 15:
+            return entity.strip('"\'')
+    
+    # Split on sentence boundaries and take first sentence if reasonable
+    sentences = re.split(r'[.!?]\s+', text)
+    if sentences:
+        first_sentence = sentences[0].strip().rstrip('.,;:')
+        words = first_sentence.split()
+        
+        # If first sentence is concise (likely the answer), use it
+        if 1 <= len(words) <= 20:
+            return first_sentence.strip('"\'')
+    
+    # IMPROVED: Better repetition detection - handle duplicate words/phrases
+    # Split by whitespace and detect repeated phrases
+    words_list = text.split()
+    if len(words_list) > 1:
+        # Check for immediate repetition (e.g., "Honey Honey" or "Kids Kids")
+        unique_words = []
+        prev_word = None
+        for word in words_list:
+            word_clean = word.strip('.,;:').lower()
+            if word_clean != prev_word:  # Only add if different from previous
+                unique_words.append(word)
+                prev_word = word_clean
+        if len(unique_words) < len(words_list) * 0.7:  # Significant reduction means repetition
+            text = ' '.join(unique_words)
+    
+    # Handle repetition (common LLM error: repeating same word/phrase)
+    lines = text.split('\n')
+    unique_lines = []
+    seen = set()
+    for line in lines:
+        line_clean = line.strip().lower()
+        if line_clean and line_clean not in seen:
+            seen.add(line_clean)
+            unique_lines.append(line.strip())
+    
+    if len(unique_lines) == 1:
+        # Single unique line - likely the answer
+        answer = unique_lines[0]
+        words = answer.split()
+        if 1 <= len(words) <= 20:
+            return answer.strip('"\'.,;:')
+    elif len(unique_lines) > 1:
+        # Multiple lines - take first reasonable one
+        for line in unique_lines:
+            words = line.split()
+            if 1 <= len(words) <= 15:
+                return line.strip('"\'.,;:')
+    
+    # Fallback: return reasonable length text
+    words = text.split()
+    if len(words) <= 25:
+        return ' '.join(words).strip('"\'.,;:')
+    
+    # Last resort: truncate at word boundary
+    truncated = text[:100]
+    last_space = truncated.rfind(' ')
+    if last_space > 20:
+        return truncated[:last_space].strip('"\'.,;:')
+    
+    return text[:100].strip()
+
+
+def post_process_answer(answer):
+    """
+    Generic post-processing to clean extracted answers.
+    Removes common artifacts and normalizes format.
+    """
+    if not answer:
+        return "I don't know"
+    
+    answer = answer.strip()
+    
+    # Filter obviously invalid single-character or placeholder answers
+    invalid_answers = ["none", "n/a", "na", "", "what", "who", "where", "when", "which", "how",
+                      "no answer", "no one", "i don't know", "i do not know", "i cannot"]
+    if answer.lower() in invalid_answers:
+        return "I don't know"
+    
+    # Filter single digits (unless it's a year)
+    if answer.strip() in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]:
+        if not re.match(r'^\d{4}$', answer.strip()):
+            return "I don't know"
+    
+    # Remove any remaining passage references
+    answer = re.sub(r'\[Passage\s+\d+\]', '', answer, flags=re.IGNORECASE)
+    answer = re.sub(r'\[.*?\]', '', answer)
+    
+    # Remove trailing explanations that might have been missed
+    answer = re.sub(r'\s+(because|since|as|which|that|plays for|is from|was|were)\s+.*$', '', answer, flags=re.IGNORECASE)
+    
+    # Remove parentheticals
+    answer = re.sub(r'\([^)]*\)', '', answer)
+    
+    # Normalize whitespace
+    answer = ' '.join(answer.split())
+    answer = answer.replace('\n', ' ')
+    
+    # Remove trailing punctuation (but preserve if part of answer)
+    answer = answer.rstrip('.,;:')
+    
+    return answer.strip()
 
 
 # ============================================================================
@@ -333,6 +652,15 @@ def llm_answer(pipeline, searcher, query, config=None):
         if not contexts:
             return "I don't know"
         
+        # Print contexts for debugging if enabled
+        if config.DEBUG_PRINT_CONTEXTS:
+            # Try to use tqdm.write if available (for progress bar compatibility)
+            try:
+                from tqdm import tqdm
+                print_contexts(query, contexts, use_tqdm=True)
+            except ImportError:
+                print_contexts(query, contexts, use_tqdm=False)
+        
         # Create prompt
         messages = create_message(query, contexts)
         
@@ -355,6 +683,7 @@ def llm_answer(pipeline, searcher, query, config=None):
         # Extract answer
         generated_text = outputs[0]["generated_text"][-1].get('content', '')
         answer = extract_answer(generated_text)
+        answer = post_process_answer(answer)  # Final cleanup
         
         return answer
         
@@ -530,8 +859,8 @@ if __name__ == "__main__":
                        help="Mode: test (generate predictions), train (evaluate), or both")
     parser.add_argument("--k", type=int, default=Config.K,
                        help="Number of passages to retrieve")
-    parser.add_argument("--method", choices=["qld", "bm25"], default=Config.RETRIEVAL_METHOD,
-                       help="Retrieval method: 'qld' (primary, from course) or 'bm25' (optional)")
+    parser.add_argument("--method", choices=["qld", "bm25", "rrf"], default=Config.RETRIEVAL_METHOD,
+                       help="Retrieval method: 'qld' (primary), 'bm25' (optional), or 'rrf' (fusion)")
     parser.add_argument("--qld-mu", type=float, default=Config.QLD_MU,
                        help="QLD mu parameter")
     

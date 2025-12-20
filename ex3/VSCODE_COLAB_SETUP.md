@@ -190,3 +190,6 @@ pip install jupytext
 # Sync py and ipynb
 jupytext --set-formats ipynb,py ex3/rag_system.py
 ```
+
+
+

@@ -189,3 +189,6 @@ python3 ex3/rag_system.py --mode train
 
 - Save file in VS Code (Cmd+S)
 - Manually upload to Colab/Drive
+
+
+

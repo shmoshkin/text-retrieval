@@ -62,3 +62,6 @@ That's it! 🎉
 - **Python** (ms-python.python) - Python support
 
 Install: `code --install-extension ms-toolsai.jupyter`
+
+
+
