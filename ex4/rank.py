@@ -1,20 +1,18 @@
 import os
 import pickle
 import json
-# Try different import paths for IndexReader (pyserini API changed across versions)
-# Try the most common import first (pyserini 0.20+)
-IndexReader = None
+# Import IndexReader as per project guidelines
+# Guidelines specify: from pyserini.index.lucene import IndexReader
 try:
-    from pyserini.index import IndexReader
+    from pyserini.index.lucene import IndexReader
 except ImportError:
+    # Fallback for different pyserini versions
     try:
-        from pyserini.index.lucene import IndexReader
+        from pyserini.index import IndexReader
     except ImportError:
-        try:
-            from pyserini.index import LuceneIndexReader as IndexReader
-        except ImportError:
-            # IndexReader not available - will use searcher fallback
-            IndexReader = None
+        # IndexReader not available - will use searcher fallback
+        IndexReader = None
+        print("⚠️  Warning: IndexReader not available. Some features may use fallback methods.")
 
 from pyserini.analysis import Analyzer, get_lucene_analyzer
 from pyserini.search import (
@@ -28,7 +26,8 @@ from scipy import sparse
 
 # Load TSV-format topics
 topic_file_path = "./files/queriesROBUST.txt"
-index_path = f"./index/RobustPyserini"
+# Use prebuilt index as per project guidelines
+# Note: The index was created using Porter stemming and no stopword removal
 
 topics = get_topics_with_reader(
     "io.anserini.search.topicreader.TsvIntTopicReader", topic_file_path
@@ -46,23 +45,25 @@ assert len(queries) == 249, "missing queries"
 queries = dict(sorted(queries.items()))
 
 
-def rank_documents(run_number, method="bm25", stemmer="krovetz", top_k=1000):
+def rank_documents(run_number, method="bm25", stemmer="porter", top_k=1000):
     """
     Rank documents using BM25, RM3, or QLD methods.
     
     Args:
         run_number: Run identifier (1, 2, or 3)
         method: "bm25", "rm3", or "qld"
-        stemmer: Stemmer type (default: "krovetz")
+        stemmer: Stemmer type (default: "porter" - matches the prebuilt index)
         top_k: Number of documents to retrieve (default: 1000)
     """
     print(f"\n{'='*60}")
     print(f"Running {method.upper()} ranking (Run {run_number})")
     print(f"{'='*60}")
     
-    # Initialize the searcher with the path to your stemmed index
-    searcher = LuceneSearcher(index_path)
-    # specify custom analyzer for the query processing step to match the way the index was built
+    # Initialize the searcher using prebuilt index (as per project guidelines)
+    searcher = LuceneSearcher.from_prebuilt_index('robust04')
+    
+    # Specify custom analyzer for the query processing step to match the way the index was built
+    # IMPORTANT: Index was created using Porter stemming and no stopword removal
     analyzer = get_lucene_analyzer(
         stemmer=stemmer, stopwords=False
     )  # Ensure no stopwords are removed from the query
@@ -102,21 +103,21 @@ def rank_documents(run_number, method="bm25", stemmer="krovetz", top_k=1000):
     return output_file
 
 
-def rank_documents_vector(run_number, top_k=1000, stemmer="krovetz"):
+def rank_documents_vector(run_number, top_k=1000, stemmer="porter"):
     """
     Document ranking using sparse matrix operations and precomputations.
     
     Args:
         run_number: Run identifier (1, 2, or 3)
         top_k: Number of documents to retrieve (default: 1000)
-        stemmer: Stemmer type (default: "krovetz")
+        stemmer: Stemmer type (default: "porter" - matches the prebuilt index)
     """
     print(f"\n{'='*60}")
     print(f"Running Vector-based ranking (Run {run_number})")
     print(f"{'='*60}")
     
-    # Initialize searcher first (needed for index access)
-    searcher_temp = LuceneSearcher(index_path)
+    # Initialize searcher using prebuilt index (as per project guidelines)
+    searcher_temp = LuceneSearcher.from_prebuilt_index('robust04')
     
     # Get index reader and document count - try multiple approaches for compatibility
     index_reader = None
@@ -125,8 +126,8 @@ def rank_documents_vector(run_number, top_k=1000, stemmer="krovetz"):
     
     if IndexReader is not None:
         try:
-            # Try direct IndexReader instantiation
-            index_reader = IndexReader(index_path)
+            # Use prebuilt index as per project guidelines
+            index_reader = IndexReader.from_prebuilt_index('robust04')
             num_docs = index_reader.stats()["documents"]
         except (AttributeError, TypeError) as e:
             print(f"⚠️  IndexReader instantiation issue: {e}")
@@ -146,9 +147,8 @@ def rank_documents_vector(run_number, top_k=1000, stemmer="krovetz"):
             except AttributeError:
                 # Use vectorizer to get document info
                 print("⚠️  Using vectorizer to determine document count...")
-                doc_vectorizer_temp = TfidfVectorizer(lucene_index_path=index_path, verbose=False)
-                # Vectorizer will handle this - we'll get docids from it
-                num_docs = 528155  # Approximate for Robust04
+                # TfidfVectorizer may need local index path - will handle in vectorizer initialization
+                num_docs = 528155  # Approximate for Robust04 (Robust04 has ~528k documents)
                 index_reader = None
     
     print(f"Total documents in index: {num_docs:,}")
@@ -173,8 +173,27 @@ def rank_documents_vector(run_number, top_k=1000, stemmer="krovetz"):
     if all_docids is None:
         print("⚠️  Will get document IDs from vectorizer during matrix construction...")
 
-    # Initialize vectorizer and load/create document matrix
-    doc_vectorizer = TfidfVectorizer(lucene_index_path=index_path, verbose=True)
+    # Initialize vectorizer - try prebuilt index first, fallback to getting index path
+    try:
+        # Try using prebuilt index directly (if supported)
+        doc_vectorizer = TfidfVectorizer.from_prebuilt_index('robust04', verbose=True)
+    except (AttributeError, TypeError):
+        # Fallback: TfidfVectorizer might need local index path
+        # Get the index path from pyserini's cache or use searcher's path
+        import pyserini
+        # Try to get the cached index path
+        try:
+            # Pyserini caches prebuilt indexes - try to find it
+            from pyserini.util import download_prebuilt_index
+            index_path = download_prebuilt_index('robust04')
+            doc_vectorizer = TfidfVectorizer(lucene_index_path=index_path, verbose=True)
+        except:
+            # Last resort: use searcher to get index path if available
+            try:
+                index_path = searcher_temp.index_dir
+                doc_vectorizer = TfidfVectorizer(lucene_index_path=index_path, verbose=True)
+            except:
+                raise Exception("Could not initialize TfidfVectorizer. Please check pyserini version and TfidfVectorizer API.")
     doc_matrix_file = f"./results/doc_matrix_{run_number}.npz"
     doc_norms_file = f"./results/doc_norms_{run_number}.npy"
 
