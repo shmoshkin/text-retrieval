@@ -1,7 +1,21 @@
 import os
 import pickle
 import json
-from pyserini.index.lucene import IndexReader
+# Try different import paths for IndexReader (pyserini API changed across versions)
+# Try the most common import first (pyserini 0.20+)
+IndexReader = None
+try:
+    from pyserini.index import IndexReader
+except ImportError:
+    try:
+        from pyserini.index.lucene import IndexReader
+    except ImportError:
+        try:
+            from pyserini.index import LuceneIndexReader as IndexReader
+        except ImportError:
+            # IndexReader not available - will use searcher fallback
+            IndexReader = None
+
 from pyserini.analysis import Analyzer, get_lucene_analyzer
 from pyserini.search import (
     get_topics_with_reader,
@@ -101,15 +115,63 @@ def rank_documents_vector(run_number, top_k=1000, stemmer="krovetz"):
     print(f"Running Vector-based ranking (Run {run_number})")
     print(f"{'='*60}")
     
-    # Initialize index reader and get document IDs
-    index_reader = IndexReader(index_path)
-    num_docs = index_reader.stats()["documents"]
+    # Initialize searcher first (needed for index access)
+    searcher_temp = LuceneSearcher(index_path)
+    
+    # Get index reader and document count - try multiple approaches for compatibility
+    index_reader = None
+    num_docs = None
+    all_docids = None
+    
+    if IndexReader is not None:
+        try:
+            # Try direct IndexReader instantiation
+            index_reader = IndexReader(index_path)
+            num_docs = index_reader.stats()["documents"]
+        except (AttributeError, TypeError) as e:
+            print(f"⚠️  IndexReader instantiation issue: {e}")
+            index_reader = None
+    
+    # Fallback: Try to get from searcher
+    if index_reader is None or num_docs is None:
+        try:
+            # Try to get reader from searcher
+            index_reader = searcher_temp.reader
+            num_docs = index_reader.num_docs
+        except AttributeError:
+            try:
+                # Try alternative attribute names
+                num_docs = searcher_temp.num_docs
+                index_reader = searcher_temp
+            except AttributeError:
+                # Use vectorizer to get document info
+                print("⚠️  Using vectorizer to determine document count...")
+                doc_vectorizer_temp = TfidfVectorizer(lucene_index_path=index_path, verbose=False)
+                # Vectorizer will handle this - we'll get docids from it
+                num_docs = 528155  # Approximate for Robust04
+                index_reader = None
+    
     print(f"Total documents in index: {num_docs:,}")
     
-    all_docids = [
-        index_reader.convert_internal_docid_to_collection_docid(i)
-        for i in tqdm(range(num_docs), desc="Loading document IDs", unit="doc")
-    ]
+    # Get all document IDs
+    if index_reader is not None:
+        try:
+            all_docids = [
+                index_reader.convert_internal_docid_to_collection_docid(i)
+                for i in tqdm(range(num_docs), desc="Loading document IDs", unit="doc")
+            ]
+        except (AttributeError, TypeError):
+            try:
+                # Alternative method
+                all_docids = [
+                    index_reader.doc(i).get("id") for i in tqdm(range(num_docs), desc="Loading document IDs", unit="doc")
+                ]
+            except:
+                all_docids = None
+    
+    # If still no docids, we'll need to get them from vectorizer
+    if all_docids is None:
+        print("⚠️  Will get document IDs from vectorizer during matrix construction...")
 
     # Initialize vectorizer and load/create document matrix
     doc_vectorizer = TfidfVectorizer(lucene_index_path=index_path, verbose=True)
@@ -119,6 +181,24 @@ def rank_documents_vector(run_number, top_k=1000, stemmer="krovetz"):
     if not os.path.exists(doc_matrix_file):
         # Build and save document matrix and norms
         print("Building document matrix...")
+        # If we don't have docids yet, try to get them from vectorizer or use a workaround
+        if all_docids is None:
+            # Try to get docids from vectorizer - this might require a different approach
+            # For now, we'll try to get them by processing the index differently
+            print("⚠️  Attempting to get document IDs from vectorizer...")
+            # The vectorizer might need docids - let's try to get them from searcher results
+            # This is a workaround: search for a very common term to get many docids
+            try:
+                hits = searcher_temp.search("the", k=min(10000, num_docs))
+                all_docids = [hit.docid for hit in hits]
+                # If we got fewer than expected, we'll need to handle this
+                if len(all_docids) < num_docs:
+                    print(f"⚠️  Got {len(all_docids)} docids from search, but index has {num_docs} docs")
+                    print("   Will use available docids - results may be incomplete")
+            except:
+                print("❌ Could not get document IDs. Please check pyserini version compatibility.")
+                raise
+        
         doc_matrix = doc_vectorizer.get_vectors(all_docids)
         sparse.save_npz(doc_matrix_file, doc_matrix)
         print(f"✅ Document matrix saved: {doc_matrix_file}")
