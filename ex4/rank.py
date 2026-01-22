@@ -103,11 +103,10 @@ def rank_documents(run_number, method="bm25", stemmer="porter", top_k=1000):
                 # Switch back to BM25 for future queries
                 searcher.set_bm25(k1=0.9, b=0.4)
                 
-                # Use the expanded results (they're still BM25-based, just with query expansion)
-                # This ensures we always have top_k results
-                hits = expanded_hits[:top_k]
+                # Use the expanded results
+                hits = expanded_hits[:top_k] if len(expanded_hits) >= top_k else expanded_hits
                 
-                # If still not enough (shouldn't happen with RM3), try individual terms
+                # If still not enough, try individual terms
                 if len(hits) < top_k:
                     query_terms = topic.split()
                     existing_docids = {hit.docid for hit in hits}
@@ -124,14 +123,33 @@ def rank_documents(run_number, method="bm25", stemmer="porter", top_k=1000):
                     
                     # Sort by score and take top_k
                     hits = sorted(all_hits, key=lambda x: x.score, reverse=True)[:top_k]
+                
+                # LAST RESORT: If still not enough, pad with documents from common terms
+                if len(hits) < top_k:
+                    print(f"⚠️  Query {topic_id}: Only {len(hits)} results after expansion, using common terms to pad")
+                    # Search for very common terms to get more documents
+                    common_terms = ["the", "a", "an", "of", "to", "in", "for"]
+                    existing_docids = {hit.docid for hit in hits}
+                    all_hits = list(hits)
+                    
+                    for term in common_terms:
+                        if len(all_hits) >= top_k:
+                            break
+                        term_hits = searcher.search(term, k=top_k)
+                        for hit in term_hits:
+                            if hit.docid not in existing_docids and len(all_hits) < top_k:
+                                all_hits.append(hit)
+                                existing_docids.add(hit.docid)
+                    
+                    hits = sorted(all_hits, key=lambda x: x.score, reverse=True)[:top_k]
             
-            # Sort hits by score (descending) and take top_k
+            # Final check and sort
             hits = sorted(hits, key=lambda x: x.score, reverse=True)[:top_k]
             
             if len(hits) < top_k:
-                print(f"⚠️  Warning: Query {topic_id} still has only {len(hits)} results (requested {top_k})")
+                print(f"❌ CRITICAL: Query {topic_id} still has only {len(hits)} results (requested {top_k})")
             elif original_count < top_k:
-                print(f"✅ Query {topic_id}: Expanded from {original_count} to {len(hits)} results using query expansion")
+                print(f"✅ Query {topic_id}: Expanded from {original_count} to {len(hits)} results")
         
         # Store results in TREC format for each topic
         results[topic_id] = [(hit.docid, hit.lucene_docid, i+1, hit.score) for i, hit in enumerate(hits)]
