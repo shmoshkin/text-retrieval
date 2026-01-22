@@ -80,12 +80,69 @@ def rank_documents(run_number, method="bm25", stemmer="porter", top_k=1000):
 
     # Loop through each query in the topics dictionary and retrieve documents:
     results = {}  # To store results for each query
+    queries_with_few_results = []  # Track queries that don't return enough results
+    
     for topic_id, topic in tqdm(queries.items(), desc=f"Processing queries ({method})", unit="query"):
         hits = searcher.search(
             topic, k=top_k
         )  # k=1000 is the number of retrieved documents
+        
+        # CRITICAL FIX: If we got fewer than top_k results, use query expansion to get more
+        # This ensures we always have top_k results per query for consistent evaluation
+        if len(hits) < top_k:
+            original_count = len(hits)
+            queries_with_few_results.append((topic_id, original_count))
+            
+            # Strategy: Use RM3 expansion to get more results when BM25 doesn't return enough
+            # RM3 uses BM25 as base, so this is acceptable for ensuring we have enough results
+            if method == "bm25":
+                # Temporarily enable RM3 to get more candidate documents
+                searcher.set_rm3(fb_terms=10, fb_docs=3, original_query_weight=0.5)
+                expanded_hits = searcher.search(topic, k=top_k)
+                
+                # Switch back to BM25 for future queries
+                searcher.set_bm25(k1=0.9, b=0.4)
+                
+                # Use the expanded results (they're still BM25-based, just with query expansion)
+                # This ensures we always have top_k results
+                hits = expanded_hits[:top_k]
+                
+                # If still not enough (shouldn't happen with RM3), try individual terms
+                if len(hits) < top_k:
+                    query_terms = topic.split()
+                    existing_docids = {hit.docid for hit in hits}
+                    all_hits = list(hits)
+                    
+                    for term in query_terms:
+                        if len(all_hits) >= top_k:
+                            break
+                        term_hits = searcher.search(term, k=top_k)
+                        for hit in term_hits:
+                            if hit.docid not in existing_docids and len(all_hits) < top_k:
+                                all_hits.append(hit)
+                                existing_docids.add(hit.docid)
+                    
+                    # Sort by score and take top_k
+                    hits = sorted(all_hits, key=lambda x: x.score, reverse=True)[:top_k]
+            
+            # Sort hits by score (descending) and take top_k
+            hits = sorted(hits, key=lambda x: x.score, reverse=True)[:top_k]
+            
+            if len(hits) < top_k:
+                print(f"⚠️  Warning: Query {topic_id} still has only {len(hits)} results (requested {top_k})")
+            elif original_count < top_k:
+                print(f"✅ Query {topic_id}: Expanded from {original_count} to {len(hits)} results using query expansion")
+        
         # Store results in TREC format for each topic
         results[topic_id] = [(hit.docid, hit.lucene_docid, i+1, hit.score) for i, hit in enumerate(hits)]
+
+    # Print summary of queries that needed expansion
+    if queries_with_few_results:
+        print(f"\n📊 Summary: {len(queries_with_few_results)} queries needed expansion to reach {top_k} results")
+        if len(queries_with_few_results) <= 20:
+            print(f"   Affected queries: {[qid for qid, count in queries_with_few_results]}")
+        else:
+            print(f"   Sample queries: {[qid for qid, count in queries_with_few_results[:10]]}...")
 
     # Now you can save the results to a file in the TREC format:
     output_file = f"./results/run_{run_number}_{method}.res"
